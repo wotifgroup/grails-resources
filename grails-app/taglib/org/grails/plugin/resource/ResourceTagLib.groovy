@@ -559,7 +559,9 @@ class ResourceTagLib {
         def linkUrl = res ? res.linkUrl : reluri
 
         def baseUrl = '' // @todo get from config
-        if (linkUrl.contains('://') || baseUrl) {
+        if(linkUrl.startsWith('//')) {
+            return [uri: request?.isSecure() ? "https:${linkUrl}" : "http:${linkUrl}", resource:res]
+        } else if (linkUrl.contains('://') || baseUrl) {
             // @todo do we need to toggle http/https here based on current request protocol?
             return [uri:baseUrl ? baseUrl+linkUrl : linkUrl, resource:res]
         } else {

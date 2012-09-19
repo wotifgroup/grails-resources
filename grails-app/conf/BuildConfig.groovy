@@ -9,7 +9,8 @@ grails.project.dependency.resolution = {
         // excludes 'ehcache'
     }
     log "warn" // log level of Ivy resolver, either 'error', 'warn', 'info', 'debug' or 'verbose'
-    repositories {        
+    repositories {
+        mavenLocal()         
         grailsPlugins()
         grailsHome()
         grailsCentral()
@@ -31,7 +32,7 @@ grails.project.dependency.resolution = {
         build(":tomcat:$grailsVersion") {
             export = false
         }
-        build(":release:1.0.0.RC3") {
+        build(":release:2.0.0") {
             export = false
         }
     }
