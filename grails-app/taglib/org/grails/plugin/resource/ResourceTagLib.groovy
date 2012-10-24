@@ -509,7 +509,7 @@ class ResourceTagLib {
                 // via g.resource
                 attrs.contextPath = ctxPath
                 uri = grailsLinkGenerator.resource(attrs)
-                abs = uri.contains('://') 
+                abs = uri.contains('://') || uri.startsWith('//')
             }
         }
         
