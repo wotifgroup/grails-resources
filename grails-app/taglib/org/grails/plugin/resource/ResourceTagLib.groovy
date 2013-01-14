@@ -598,18 +598,13 @@ class ResourceTagLib {
             })
         }
 
-<<<<<<< HEAD
+        // If the link has to support linkUrl for override, or fall back to the full requested url
+        // we resolve without query params, but must keep them for linking        
+        def linkUrl = res ? res.linkUrl : contextRelUri
         def baseUrl = '' // @todo get from config
         if(linkUrl.startsWith('//')) {
             return [uri: request?.isSecure() ? "https:${linkUrl}" : "http:${linkUrl}", resource:res]
         } else if (linkUrl.contains('://') || baseUrl) {
-=======
-        // If the link has to support linkUrl for override, or fall back to the full requested url
-        // we resolve without query params, but must keep them for linking        
-        def linkUrl = res ? res.linkUrl : contextRelUri
-
-        if (linkUrl.contains('://')) {
->>>>>>> 1.2.RC3
             // @todo do we need to toggle http/https here based on current request protocol?
             return [uri:linkUrl, resource:res]
         } else {
