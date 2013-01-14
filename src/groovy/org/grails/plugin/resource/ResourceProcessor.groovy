@@ -66,7 +66,8 @@ class ResourceProcessor implements InitializingBean {
         jpg:[disposition: 'head'],
         png:[disposition: 'head'],
         ico:[disposition: 'head'],
-        js:[disposition: 'defer']
+        js:[disposition: 'defer'],
+        less:[disposition: 'head']
     ]
 
     Map statistics = [:]
