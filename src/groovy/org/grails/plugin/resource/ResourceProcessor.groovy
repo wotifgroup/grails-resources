@@ -42,8 +42,9 @@ class ResourceProcessor implements InitializingBean {
     def log = LogFactory.getLog(ResourceProcessor)
 
     static final PATH_MATCHER = new AntPathMatcher()
-    static IMPLICIT_MODULE = "__@adhoc-files@__"
-    static SYNTHETIC_MODULE = "__@synthetic-files@__"
+    static ADHOC_MODULE = "__@adhoc-files@__"        // The placeholder for all undeclared resources that are linked to
+    static SYNTHETIC_MODULE = "__@synthetic-files@__"   // The placeholder for all the generated (i.e. aggregate) resources
+
     static REQ_ATTR_DEBUGGING = 'resources.debug'
     static REQ_ATTR_DISPOSITIONS_REMAINING = 'resources.dispositions.remaining'
     static REQ_ATTR_DISPOSITIONS_DONE = "resources.dispositions.done"
@@ -97,7 +98,7 @@ class ResourceProcessor implements InitializingBean {
     
     boolean isInternalModule(def moduleOrName) {
         def n = moduleOrName instanceof ResourceModule ? moduleOrName.name : moduleOrName
-        return n in [IMPLICIT_MODULE, SYNTHETIC_MODULE]        
+        return n in [ADHOC_MODULE, SYNTHETIC_MODULE]        
     }
     
     /**
@@ -107,7 +108,7 @@ class ResourceProcessor implements InitializingBean {
      */
     void updateDependencyOrder() {
         def modules = (modulesByName.collect { it.value }).findAll { !isInternalModule(it) }
-        def noIncomingEdges = modules.findAll { l -> !modules.any { l in it.dependsOn }  }
+        def noIncomingEdges = modules.findAll { l -> !modules.any { l.name in it.dependsOn }  }
         def ordered = []
         Set visited = new HashSet()
         
@@ -115,7 +116,15 @@ class ResourceProcessor implements InitializingBean {
         visit = { n -> 
             if (!(n.name in visited)) {
                 visited << n.name
-                def incomingEdges = modules.findAll { mod -> mod.name in n.dependsOn }
+                def incomingEdges = []
+                n.dependsOn?.each {d ->
+                    def m = modules.find { mod -> mod.name == d }
+                    if (!m) {
+                        log.warn "There is a dependency on module [${d}] by module [${n.name}] but no such module has been defined"
+                    } else {
+                        incomingEdges << m
+                    }
+                }
                 for (m in incomingEdges) {
                     visit(m)
                 }
@@ -127,7 +136,7 @@ class ResourceProcessor implements InitializingBean {
             visit(module)
         }
         
-        ordered << IMPLICIT_MODULE
+        ordered << ADHOC_MODULE
         ordered << SYNTHETIC_MODULE 
         
         modulesInDependencyOrder = ordered
@@ -261,7 +270,9 @@ class ResourceProcessor implements InitializingBean {
         def uri = ResourceProcessor.removeQueryParams(extractURI(request, false))
         def inf
         try {
-            inf = getResourceMetaForURI(uri, false)
+            // Allow ad hoc creation of these resources too, incase they are requested directly 
+            // across multiple nodes, even if this node has not yet created a link to that resource
+            inf = getResourceMetaForURI(uri, true)
         } catch (FileNotFoundException fnfe) {
             response.sendError(404, fnfe.message)
             return
@@ -352,7 +363,7 @@ class ResourceProcessor implements InitializingBean {
     
     ResourceModule getOrCreateSyntheticOrImplicitModule(boolean synthetic) {
         def mod
-        def moduleName = synthetic ? SYNTHETIC_MODULE : IMPLICIT_MODULE
+        def moduleName = synthetic ? SYNTHETIC_MODULE : ADHOC_MODULE
         // We often get multiple simultaneous requests at startup and this causes
         // multiple creates and loss of concurrently processed resources
         synchronized (moduleName) {
@@ -704,7 +715,7 @@ class ResourceProcessor implements InitializingBean {
 
         // These are bi-products of resource processing so need to go
         modulesByName.remove(SYNTHETIC_MODULE)
-        modulesByName.remove(IMPLICIT_MODULE)
+        modulesByName.remove(ADHOC_MODULE)
 
         // This is cached data
         allResourcesByOriginalSourceURI.clear()
@@ -834,6 +845,12 @@ class ResourceProcessor implements InitializingBean {
 /* @todo add this later when we understand what less-css-resources needs
         // Now do the derived synthetic resources as we know any changed components
         // have now been reset
+        
+        // LESS mapper would make synthetic resources too, and these might also delegate
+        // to a bundled resource, but all need processing in the correct order
+        // and LESS would need to compile the stuff to a file in beginPrepare
+        // before the bundle aggregates the output. 
+        // Question is, what is the correct ordering here?
         collectResourcesThatNeedProcessing(modulesByName[SYNTHETIC_MODULE], resBatch)
     */
         resourcesChanged(resBatch)
@@ -921,6 +938,8 @@ class ResourceProcessor implements InitializingBean {
         }
         updateDependencyOrder()
         def s4 = "Dependency load order: ${modulesInDependencyOrder}\n"
+
+        def s5 = "Mapper application order: ${resourceMappers*.name}\n"
         
         if (toLog) {
             log.debug '-'*50
@@ -935,8 +954,10 @@ class ResourceProcessor implements InitializingBean {
             log.debug '-'*50
             log.debug(s4)
             log.debug '-'*50
+            log.debug(s5)
+            log.debug '-'*50
         } 
-        return s1.toString() + s2.toString() + s4.toString()
+        return s1.toString() + s2.toString() + s4.toString() + s5.toString()
     }
     
     /**
@@ -1003,6 +1024,7 @@ class ResourceProcessor implements InitializingBean {
             loadResources(reloadBatch)
             
             dumpStats()
+            log.info("Finished resource mapper reload")
         } finally {
             reloading = false
         }
@@ -1020,6 +1042,7 @@ class ResourceProcessor implements InitializingBean {
             loadModules(reloadBatch)
             
             dumpStats()
+            log.info("Finished module definition reload")
         } finally {
             reloading = false
         }
@@ -1037,6 +1060,7 @@ class ResourceProcessor implements InitializingBean {
             loadResources(reloadBatch)
             
             dumpStats()
+            log.info("Finished changed file reload")
         } finally {
             reloading = false
         }
@@ -1056,6 +1080,9 @@ class ResourceProcessor implements InitializingBean {
             loadModules(reloadBatch)
             
             dumpStats()
+            log.info("Finished full reload")
+        } catch (Throwable t) {
+            log.error "Unable to load resources", t
         } finally {
             reloading = false
         }
@@ -1106,7 +1133,7 @@ class ResourceProcessor implements InitializingBean {
                     }
                 }
                 result << m.key
-            } else if (m.value && m.key != ResourceProcessor.IMPLICIT_MODULE) {
+            } else if (m.value && m.key != ResourceProcessor.ADHOC_MODULE) {
                 throw new IllegalArgumentException("No module found with name [${m.key}]")
             }
         }
@@ -1146,11 +1173,11 @@ class ResourceProcessor implements InitializingBean {
     /**
      * Add a disposition to the current request's set of them
      */
-    void addDispositionToRequest(request, String disposition) {
+    void addDispositionToRequest(request, String disposition, String reason) {
         if (haveAlreadyDoneDispositionResources(request, disposition)) {
-            throw new IllegalArgumentException("""Cannot add resource with disposition [$disposition] to this request - 
+            throw new IllegalArgumentException("""Cannot disposition [$disposition] to this request (required for [$reason]) - 
 that disposition has already been rendered. Check that your r:layoutResources tag comes after all
-other Resource tags that add content to that disposition.""")
+Resource tags that add content to that disposition.""")
         }
         def dispositions = request[REQ_ATTR_DISPOSITIONS_REMAINING] 
         if (dispositions != null) {
@@ -1170,7 +1197,7 @@ other Resource tags that add content to that disposition.""")
                 log.debug "Adding module's dispositions to request: ${module.requiredDispositions}"
             } 
             for (d in module.requiredDispositions) {
-                addDispositionToRequest(request, d)
+                addDispositionToRequest(request, d, moduleName)
             }
         }
     }

@@ -22,7 +22,7 @@ class ResourcesGrailsPlugin {
     static DEFAULT_URI_PREFIX = 'static'
     static DEFAULT_ADHOC_PATTERNS = ["/images/*", "*.css", "*.js"].asImmutable()
 
-    def version = "1.2.0_wotif"
+    def version = "1.2.RC3"
     def grailsVersion = "1.3 > *"
 
     def loadAfter = ['logging'] // retained to ensure correct loading under Grails < 2.0
@@ -182,8 +182,7 @@ class ResourcesGrailsPlugin {
     
     boolean isResourceWeShouldProcess(File file) {
         // Make windows filenams safe for matching
-        def baseDir = new File('.', 'web-app').canonicalPath+'/'
-        def fileName = file.canonicalPath.replaceAll('\\\\', '/').substring(baseDir.size())
+        def fileName = file.canonicalPath.replaceAll('\\\\', '/').replaceAll('^.*?/web-app/', '')
         boolean shouldProcess = !(RELOADABLE_RESOURCE_EXCLUDES.any { PATH_MATCHER.match(it, fileName ) })
         return shouldProcess
     }
@@ -231,13 +230,15 @@ class ResourcesGrailsPlugin {
             def oldClass = application.getArtefact(type, event.source.name)
             application.addArtefact(type, event.source)
             // Reload subclasses
-            application.getArtefacts(type).each {
-                if (it.clazz != event.source && oldClass.clazz.isAssignableFrom(it.clazz)) {
-                    def newClass = application.classLoader.reloadClass(it.clazz.name)
-                    application.addArtefact(type, newClass)
+            if (oldClass) {
+                application.getArtefacts(type).each {
+                    if (it.clazz != event.source && oldClass.clazz.isAssignableFrom(it.clazz)) {
+                        def newClass = application.classLoader.reloadClass(it.clazz.name)
+                        application.addArtefact(type, newClass)
+                    }
                 }
             }
-            
+                        
             true
         } else {
             false

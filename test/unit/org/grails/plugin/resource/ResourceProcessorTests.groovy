@@ -44,6 +44,16 @@ class ResourceProcessorTests extends GrailsUnitTestCase {
         assertEquals '/somehack.xml#whatever', meta.linkUrl
     }
 
+    void testPrepareAbsoluteURLWithQueryParams() {
+        def r = new ResourceMeta()
+        r.sourceUrl = 'http://crackhouse.ck/css/somehack.css?x=y#whatever'
+        
+        def meta = svc.prepareResource(r, true)
+        assertNotNull meta
+        assertEquals 'http://crackhouse.ck/css/somehack.css', meta.actualUrl
+        assertEquals 'http://crackhouse.ck/css/somehack.css?x=y#whatever', meta.linkUrl
+    }
+
     void testBuildResourceURIForGrails1_4() {
         def r = new ResourceMeta()
         r.sourceUrl = '/somehack.xml#whatever'
@@ -128,17 +138,17 @@ class ResourceProcessorTests extends GrailsUnitTestCase {
         def request = [:]
         assertTrue svc.getRequestDispositionsRemaining(request).empty
 
-        svc.addDispositionToRequest(request, 'head')
+        svc.addDispositionToRequest(request, 'head', 'dummy')
         assertTrue((['head'] as Set) == svc.getRequestDispositionsRemaining(request))
 
         // Let's just make sure its a set
-        svc.addDispositionToRequest(request, 'head')
+        svc.addDispositionToRequest(request, 'head', 'dummy')
         assertTrue((['head'] as Set) == svc.getRequestDispositionsRemaining(request))
 
-        svc.addDispositionToRequest(request, 'defer')
+        svc.addDispositionToRequest(request, 'defer', 'dummy')
         assertTrue((['head', 'defer'] as Set) == svc.getRequestDispositionsRemaining(request))
 
-        svc.addDispositionToRequest(request, 'image')
+        svc.addDispositionToRequest(request, 'image', 'dummy')
         assertTrue((['head', 'image', 'defer'] as Set) == svc.getRequestDispositionsRemaining(request))
     }
 
@@ -189,6 +199,38 @@ class ResourceProcessorTests extends GrailsUnitTestCase {
         assertTrue pos('d') > pos('c')
 
         assertTrue pos('f') > pos('d')
+    }
+    
+    void testWillNot404OnAdhocResourceWhenAccessedDirectlyFromStaticUrl() {
+		svc.adHocIncludes = ['/**/*.xml']
+		svc.staticUrlPrefix = '/static'
+        def request = [contextPath:'resources', requestURI: 'resources/static/somehack.xml']
+        
+        def out = new ByteArrayOutputStream();
+        def redirectUri = null
+        
+        def response = [
+            sendError: { code, msg = null -> },
+            sendRedirect: { uri -> redirectUri = uri },
+            setContentLength: { l -> },
+            setDateHeader: { d, l -> },
+            outputStream: out
+	    ]
+	    
+    
+    	svc.processModernResource(request, response);
+    	
+    	// the response was written
+    	assertTrue(out.size() > 0)
+    	assertNull(redirectUri);
+    	
+    	// the legacy resource should now redirect
+   	    svc.processLegacyResource(
+   	      	[contextPath:'resources', 
+   	    	requestURI: 'resources/somehack.xml'], 
+   	    	response);
+   	    	
+    	assertNotNull(redirectUri);   	    	
     }
 }
 

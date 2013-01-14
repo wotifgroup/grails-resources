@@ -2,18 +2,23 @@ package org.grails.plugin.resource
 
 import grails.test.*
 
-import org.grails.plugin.resource.util.HalfBakedLegacyLinkGenerator
+import org.junit.Before
 
-class ResourceTagLibTests extends TagLibUnitTestCase {
-    protected void setUp() {
-        super.setUp()
+import org.grails.plugin.resource.util.HalfBakedLegacyLinkGenerator
+import org.codehaus.groovy.grails.web.taglib.exceptions.GrailsTagException
+
+@TestFor(ResourceTagLib)
+class ResourceTagLibTests {
+	
+	ResourceTagLib tagLib
+	
+	@Before
+    void setUp() {
+        tagLib = applicationContext.getBean(ResourceTagLib)
         
         Object.metaClass.encodeAsHTML = { -> delegate.toString() }
     }
 
-    protected void tearDown() {
-        super.tearDown()
-    }
 
     void testLinkResolutionForGrails2() {
         tagLib.grailsLinkGenerator = [
@@ -239,7 +244,7 @@ class ResourceTagLibTests extends TagLibUnitTestCase {
         assertFalse output.contains('dir=')
     }
 
-    def testDebugModeResourceLinkWithAbsoluteCDNURL() {
+    void testDebugModeResourceLinkWithAbsoluteCDNURL() {
 
         def url = 'https://ajax.googleapis.com/ajax/libs/jquery/1.4/jquery.min.js'
         def testMeta = new ResourceMeta()
@@ -259,7 +264,27 @@ class ResourceTagLibTests extends TagLibUnitTestCase {
         assertTrue output.contains('src="https://ajax.googleapis.com/ajax/libs/jquery/1.4/jquery.min.js?_debugResources')
     }
     
-    def testRequireUpdatesRequestAttributes() {
+    void testLinkToAbsoluteResourceWithQueryParams() {
+
+        def url = 'https://ajax.googleapis.com/ajax/libs/jquery/1.4/jquery.min.js?x=y#nasty'
+        def testMeta = new ResourceMeta()
+        testMeta.sourceUrl = url
+        testMeta.actualUrl = url
+        testMeta.disposition = 'head'
+        
+        tagLib.request.contextPath = "/resourcestests"
+        
+        tagLib.grailsResourceProcessor = [
+            isDebugMode: { r -> false },
+            getResourceMetaForURI: { uri, adhoc, declRes, postProc -> testMeta },
+            staticUrlPrefix: '/static'
+        ]
+        def output = tagLib.external(uri:url, type:"js").toString()
+        println "Output was: $output"
+        assertTrue output.contains('src="'+url+'"')
+    }
+    
+    void testRequireUpdatesRequestAttributes() {
         tagLib.grailsResourceProcessor = [
             addModuleDispositionsToRequest: { req, module -> }
         ]
@@ -268,16 +293,18 @@ class ResourceTagLibTests extends TagLibUnitTestCase {
         
         def tracker = tagLib.request.resourceModuleTracker
         assertNotNull tracker
-        assertEquals 3, tracker?.size()
+        assertEquals 2, tracker?.size()
         assertTrue tracker.containsKey('thingOne')
         assertEquals true, tracker.thingOne
         assertTrue tracker.containsKey('thingTwo')
         assertEquals true, tracker.thingOne
-        assertTrue tracker.containsKey(ResourceProcessor.IMPLICIT_MODULE)
-        assertEquals false, tracker[ResourceProcessor.IMPLICIT_MODULE]
+
+        // We must never include the ADHOC or SYNTHETIC modules!
+        assertFalse tracker.containsKey(ResourceProcessor.ADHOC_MODULE)
+        assertFalse tracker.containsKey(ResourceProcessor.SYNTHETIC_MODULE)
     }
     
-    def testRequireIndicatesModuleNotMandatory() {
+    void testRequireIndicatesModuleNotMandatory() {
         tagLib.grailsResourceProcessor = [
             addModuleDispositionsToRequest: { req, module -> }
         ]
@@ -286,12 +313,39 @@ class ResourceTagLibTests extends TagLibUnitTestCase {
         
         def tracker = tagLib.request.resourceModuleTracker
         assertNotNull tracker
-        assertEquals 3, tracker?.size()
+        assertEquals 2, tracker?.size()
         assertTrue tracker.containsKey('thingOne')
         assertEquals false, tracker.thingOne
         assertTrue tracker.containsKey('thingTwo')
         assertEquals false, tracker.thingTwo
-        assertTrue tracker.containsKey(ResourceProcessor.IMPLICIT_MODULE)
-        assertEquals false, tracker[ResourceProcessor.IMPLICIT_MODULE]
+
+        // We must never include the ADHOC or SYNTHETIC modules!
+        assertFalse tracker.containsKey(ResourceProcessor.ADHOC_MODULE)
+        assertFalse tracker.containsKey(ResourceProcessor.SYNTHETIC_MODULE)
+    }
+
+    void testExternalTagCanWorkWithUrlUriOrDir() {
+
+        try {
+            tagLib.external(uri: '/fake/url')
+            tagLib.external(url: '/fake/url')
+            tagLib.external(file: 'myfile.js')
+        } catch (GrailsTagException e) {
+            fail 'We should allow the tag to be used with any of the above attributes present'
+        } catch (Exception e) {
+            // We expect this because the rest of the tag isn't mocked.
+        }
+        
+    }
+
+    void testExternalTagRequiresUrlUriOrDir() {
+
+        try {
+            tagLib.external([:])
+            fail 'Should have thrown an exception due to missing required attributes'
+        } catch (Exception e) {
+            assert e.message == 'For the &lt;r:external /&gt; tag, one of the attributes [uri, url, file] must be present'
+        }
+
     }
 }

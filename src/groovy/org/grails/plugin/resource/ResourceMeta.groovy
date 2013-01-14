@@ -138,6 +138,10 @@ class ResourceMeta {
         sourceUrl.indexOf(':/') > 0
     }
     
+    boolean isActualAbsolute() {
+        actualUrl.indexOf(':/') > 0
+    }
+    
     boolean isDirty() {
         !originalResource || 
         (originalResource.lastModified() != originalLastMod)
@@ -209,41 +213,42 @@ class ResourceMeta {
     void beginPrepare(grailsResourceProcessor) {
         def uri = this.sourceUrl
         if (!uri.contains('://')) {
+            
+            // Delete whatever file may already be there
+            processedFile?.delete()
+            
+    		def uriWithoutFragment = uri
+    		if (uri.contains('#')) {
+    			uriWithoutFragment = uri.substring(0, uri.indexOf('#'))
+    		}
 
-            if (!exists()) {
-        		def uriWithoutFragment = uri
-        		if (uri.contains('#')) {
-        			uriWithoutFragment = uri.substring(0, uri.indexOf('#'))
-        		}
-
-                def origResourceURL = grailsResourceProcessor.getOriginalResourceURLForURI(uriWithoutFragment)
-                if (!origResourceURL) {
-                    if (log.errorEnabled) {
-                        if (this.declaringResource) {
-                            log.error "While processing ${this.declaringResource}, a resource was required but not found: ${uriWithoutFragment}"
-                        } else {
-                            log.error "Resource not found: ${uriWithoutFragment}"
-                        }
+            def origResourceURL = grailsResourceProcessor.getOriginalResourceURLForURI(uriWithoutFragment)
+            if (!origResourceURL) {
+                if (log.errorEnabled) {
+                    if (this.declaringResource) {
+                        log.error "While processing ${this.declaringResource}, a resource was required but not found: ${uriWithoutFragment}"
+                    } else {
+                        log.error "Resource not found: ${uriWithoutFragment}"
                     }
-                    throw new FileNotFoundException("Cannot locate resource [$uri]")
                 }
+                throw new FileNotFoundException("Cannot locate resource [$uri]")
+            }
 
-                this.contentType = grailsResourceProcessor.getMimeType(uriWithoutFragment)
-                if (log.debugEnabled) {
-                    log.debug "Resource [$uriWithoutFragment] ($origResourceURL) has content type [${this.contentType}]"
-                }
+            this.contentType = grailsResourceProcessor.getMimeType(uriWithoutFragment)
+            if (log.debugEnabled) {
+                log.debug "Resource [$uriWithoutFragment] ($origResourceURL) has content type [${this.contentType}]"
+            }
 
-                setOriginalResource(new UrlResource(origResourceURL))
+            setOriginalResource(new UrlResource(origResourceURL))
 
-                if (grailsResourceProcessor.processingEnabled) {
-                    setActualUrl(uriWithoutFragment)
+            if (grailsResourceProcessor.processingEnabled) {
+                setActualUrl(uriWithoutFragment)
 
-                    setProcessedFile(grailsResourceProcessor.makeFileForURI(uriWithoutFragment))
-                    // copy the file ready for mutation
-                    this.copyOriginalResourceToWorkArea()
-                } else {
-                    setActualUrl(uriWithoutFragment)
-                }
+                setProcessedFile(grailsResourceProcessor.makeFileForURI(uriWithoutFragment))
+                // copy the file ready for mutation
+                this.copyOriginalResourceToWorkArea()
+            } else {
+                setActualUrl(uriWithoutFragment)
             }
 
         } else {
@@ -336,7 +341,11 @@ class ResourceMeta {
     }
     
     String getWorkDirRelativePath() {
-        processedFile.path - workDir.path
+        if (processedFile) {
+            return processedFile.path - workDir.path
+        } else {
+            return null
+        }
     }
     
     String getActualUrlParent() {
@@ -384,6 +393,9 @@ class ResourceMeta {
      * All resource URLs must be app-relative with no ../ or ./
      */
     String relativeTo(ResourceMeta base) {
+        if (actualAbsolute) {
+            return actualUrl
+        }
         def baseDirStr = base.actualUrlParent
         def thisDirStr = this.actualUrlParent
         boolean isChild = thisDirStr.startsWith(baseDirStr+'/')
@@ -415,9 +427,13 @@ class ResourceMeta {
     }
     
     void updateActualUrlFromProcessedFile() {
-        def p = workDirRelativePath.replace('\\', '/')
-        // have to call the setter method
-        setActualUrl(p)
+        def p = workDirRelativePath?.replace('\\', '/')
+        if (p != null) {
+            // have to call the setter method
+            setActualUrl(p)
+        } else {
+            setActualUrl(sourceUrl)
+        }
     }
     
     boolean excludesMapperOrOperation(String mapperName, String operationName) {
