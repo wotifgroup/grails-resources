@@ -1,8 +1,6 @@
 package org.grails.plugin.resource
 
-import org.codehaus.groovy.grails.web.servlet.mvc.GrailsWebRequest
 import java.util.concurrent.CopyOnWriteArrayList
-
 /**
  * Holder for info about a module declaration at runtime
  *
@@ -77,7 +75,7 @@ class ResourceModule {
     }
     
     def getBundleTypes() {
-        ['css', 'js']
+        ['css', 'js', 'less']
     }
     
     ResourceMeta addNewSyntheticResource(Class<ResourceMeta> type, String uri, resSvc) {

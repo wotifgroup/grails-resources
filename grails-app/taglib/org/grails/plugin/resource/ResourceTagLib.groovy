@@ -1,13 +1,8 @@
 package org.grails.plugin.resource
 
-import grails.util.Environment
 import grails.util.GrailsUtil
-
-import org.codehaus.groovy.grails.commons.ConfigurationHolder
 import org.apache.commons.io.FilenameUtils
-import org.grails.plugin.resource.util.HalfBakedLegacyLinkGenerator
 import org.codehaus.groovy.grails.web.taglib.exceptions.GrailsTagException
-
 /**
  * This taglib handles creation of all the links to resources, including the smart de-duping of them.
  *
@@ -82,7 +77,7 @@ class ResourceTagLib {
     static SUPPORTED_TYPES = [
         css:[type:"text/css", rel:'stylesheet', media:'screen, projection'],
         js:[type:'text/javascript', writer:'js'],
-
+        less:[type:"text/css", rel: "stylesheet", media: "screen, projection"],
         gif:[rel:'shortcut icon'],
         jpg:[rel:'shortcut icon'],
         png:[rel:'shortcut icon'],
